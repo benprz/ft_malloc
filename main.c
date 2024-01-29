@@ -123,5 +123,9 @@ int main() {
 		printf("%s\n", str);
 		ft_free(str);
 	}
+	// struct rlimit rlim;
+	// getrlimit(RLIMIT_AS, &rlim);
+	// printf("rlim_cur: %lu\n", rlim.rlim_cur);
+	
 	return 0;
 }
