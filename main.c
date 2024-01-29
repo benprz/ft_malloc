@@ -7,29 +7,54 @@
 
 #include <stdio.h>
 
-struct s_zone {
-	struct s_block *s_block;
+#include "libft.h"
+
+struct s_zone
+{
+	struct s_block *block;
 	size_t used_bytes;
 	// struct s_zone *next;
 };
 
-struct s_zone *g_tiny_zone = NULL;
-struct s_zone *g_small_zone = NULL;
-struct s_zone *g_large_zone = NULL;
+struct s_allocations
+{
+	bool is_struct_init;
+	struct s_zone *small_zone;
+	struct s_zone *medium_zone;
+	size_t page_size;
+	size_t word_size;
+	size_t small_zone_size;
+	size_t medium_zone_size;
+	size_t small_alloc_size;
+	size_t medium_alloc_size;
+};
 
-struct s_block {
-	void *ptr;
-	size_t size;
+struct s_allocations g_allocations;
+
+struct s_block
+{
+	void *begin;
+	void *end; // (begin + size)
 	struct s_block *next;
 };
 
 struct s_block *get_block(void *ptr) {
-	struct s_block *block = g_root;
-	while (block != NULL) {
-		if (block->ptr == ptr) {
-			return block;
+	struct s_block *block;
+	if (ptr >= g_allocations.small_zone + sizeof(struct s_zone) && ptr <= g_allocations.small_zone + sizeof(struct s_zone) + small_zone_size) {
+		while (block != NULL) {
+			if (block->begin == ptr) {
+				return block;
+			}
+			block = block->next;
 		}
-		block = block->next;
+	}
+	else if (ptr >= g_medium_zone + sizeof(struct s_zone) && ptr <= g_medium_zone + sizeof(struct s_zone) + medium_zone_size) {
+		while (block != NULL) {
+			if (block->begin == ptr) {
+				return block;
+			}
+			block = block->next;
+		}
 	}
 	return NULL;
 }
@@ -42,28 +67,65 @@ struct s_block *get_last_block() {
 	return block;
 }
 
-void *ft_malloc(size_t size) {
-	size_t page_size = getpagesize();
-	size_t tiny_zone_size = page_size;
-	size_t small_zone_size = page_size * 10;
-	size_t large_zone_size = page_size * 100;
-	size_t tiny_alloc_size = (tiny_zone_size / 100) + (tiny_zone_size % 100);
-	size_t small_alloc_size = (small_zone_size / 100) + (small_zone_size % 100);
-	size_t large_alloc_size = (large_zone_size / 100) + (large_zone_size % 100);
-	size_t word_size = sizeof(void *);
+void init_malloc() {
+	g_allocations.is_struct_init = true;
+	g_allocations.small_zone = NULL;
+	g_allocations.medium_zone = NULL;
+	g_allocations.page_size = getpagesize();
+	g_allocations.word_size = sizeof(void*);
+	g_allocations.small_zone_size = limit.rlim_cur / 100;
+	g_allocations.medium_zone_size = limit.rlim_cur / 100 * 10;
+	g_allocations.small_alloc_size = g_allocations.small_zone_size / 100;
+	g_allocations.medium_alloc_size = g_allocations.medium_zone_size / 100;
+}
 
-	if (size <= tiny_alloc_size) {
-		// tiny
-		if (g_tiny_zone == NULL) {
-			if ((g_tiny_zone = mmap(NULL, tiny_zone_size + sizeof(struct s_zone), PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0)) != MAP_FAILED) {
-				g_tiny_zone->s_block = NULL;
-				g_tiny_zone->used_bytes = 0;
+void *ft_malloc(size_t size)
+{
+	if (!g_allocations.is_struct_init) {
+		init_malloc();
+	}
+	//print data
+	printf("page_size: %zu\n", page_size);
+	printf("word_size: %zu\n", word_size);
+	printf("small_zone_size: %zu\n", small_zone_size);
+	printf("medium_zone_size: %zu\n", medium_zone_size);
+	printf("small_alloc_size: %zu\n", small_alloc_size);
+	printf("medium_alloc_size: %zu\n", medium_alloc_size);
+
+	if (size <= small_alloc_size)
+	{
+		if (g_allocations.small_zone == NULL)
+		{
+			if ((g_allocations.small_zone = mmap(NULL, small_zone_size + sizeof(struct s_zone), PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0)) != MAP_FAILED)
+			{
+				g_allocations.small_zone->s_block = NULL;
+				g_allocations.small_zone->used_bytes = 0;
 			}
 		}
-		if (g_tiny_zone != NULL) {
+		if (g_allocations.small_zone != NULL)
+		{
 			size_t aligned_size = size + (word_size - (size % word_size));
-			if ()
-
+			printf("aligned_size: %zu\n", aligned_size);
+			if (g_allocations.small_zone->used_bytes + aligned_size <= small_zone_size)
+			{
+				struct s_block *block = NULL;
+				if ((block = mmap(NULL, sizeof(struct s_block), PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0)) != MAP_FAILED)
+				{
+					if (g_allocations.small_zone->block == NULL) {
+						g_allocations.small_zone->block = block;
+						block->begin = g_allocations.small_zone + sizeof(struct s_zone);
+					}
+					else {
+						struct s_block *last_block = get_last_block();
+						block->begin = last_block->end;
+						last_block->next = block;
+					}
+					block->end = block->begin + aligned_size;
+					block->next = NULL;
+					g_allocations.small_zone->used_bytes += aligned_size;
+					return block->begin;
+				}
+			}
 		}
 	}
 	return NULL;
@@ -111,21 +173,17 @@ void ft_free(void *ptr) {
 	}
 }
 
-int main() {
-	//print getpagesize
-	printf("getpagesize: %d\n", getpagesize());
-	char *str = ft_malloc(10);
-	if (str) {
-		for (int i = 0; i < 10; i++) {
-			printf("%d ", str[i]);
-		}
-		sprintf(str, "Hello");
-		printf("%s\n", str);
-		ft_free(str);
-	}
-	// struct rlimit rlim;
-	// getrlimit(RLIMIT_AS, &rlim);
-	// printf("rlim_cur: %lu\n", rlim.rlim_cur);
-	
+int main()
+{
+	// char *str = ft_malloc(38);
+	free((void*)0x7f7f7f7f7f7f);
+	// if (str) {
+	// 	for (int i = 0; i < 10; i++) {
+	// 		printf("%d ", str[i]);
+	// 	}
+	// 	sprintf(str, "Hello");
+	// 	printf("%s\n", str);
+	// 	ft_free(str);
+	// }
 	return 0;
 }
