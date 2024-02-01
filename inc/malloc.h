@@ -8,6 +8,7 @@
 #include <sys/time.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <asm-generic/param.h> // EXEC_PAGESIZE
 
 #include <stdio.h>
 
@@ -27,24 +28,14 @@ struct s_block
 	struct s_block *next;
 };
 
+// zone aka arena -> regions -> blocks
+
 struct s_malloc
 {
-	bool is_struct_init;
-
-	// sizes
-	size_t page_size;
-	size_t word_size;
-	size_t small_zone_size;
-	size_t medium_zone_size;
-	size_t small_alloc_size;
-	size_t medium_alloc_size;
-
-	struct s_zone *small_zone;
-	struct s_zone *medium_zone;
-
-
+	struct s_zone *tiny;
+	struct s_zone *small;
 };
 
-struct s_malloc g_malloc;
+extern struct s_malloc g_malloc;
 
 #endif

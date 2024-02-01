@@ -7,7 +7,8 @@ INC_DIR = inc/
 EXE = ft_malloc
 
 SRC_DIR = src/
-SRC =	malloc.c
+SRC =	malloc.c\
+		free.c
 
 LIBRARY_DIR = ./
 
